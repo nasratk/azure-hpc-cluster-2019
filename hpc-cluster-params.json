@@ -2,26 +2,22 @@
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
-    "location": { "value": "uksouth" },
-
     "clusterName": { "value": "hpcuk1" },
     "headNodeOS": { "value": "WindowsServer2022" },
     "computeNodeImage": { "value": "WindowsServer2022" },
     "computeNodeNamePrefix": { "value": "hpcuk1" },
 
     "computeNodeNumber": { "value": 2 },
-    "computeNodeVMSize": { "value": "Standard_D4s_v5" },
-    "computeNodeOsDiskType": { "value": "StandardSSD_LRS" },
+    "computeNodeVMSize": { "value": "Standard_D4s_v3" },
+    "computeNodeOsDiskType": { "value": "Standard_SSD" },
     "computeNodeDataDiskSize": { "value": 128 },
     "computeNodeDataDiskCount": { "value": 0 },
-    "computeNodeDataDiskType": { "value": "Standard_LRS" },
+    "computeNodeDataDiskType": { "value": "Standard_HDD" },
 
-    "headNodeVMSize": { "value": "Standard_D8s_v5" },
+    "headNodeVMSize": { "value": "Standard_D8s_v3" },
 
-    "virtualNetworkName": { "value": "numerica-uk-vnet" },
-    "virtualNetworkResourceGroupName": { "value": "rg-numerica-uk" },
-    "subnetName": { "value": "hpcuk-subnet" },
     "enableAcceleratedNetworking": { "value": "No" },
+    "createPublicIPAddressForHeadNode": { "value": "No" },
 
     "adminUsername": {
       "reference": {
@@ -40,15 +36,7 @@
       }
     },
 
-    "keyVaultName": { "value": "kv-num-uk" },
-    "keyVaultResourceGroup": { "value": "rg-numerica-uk-hpc" },
-    "certificateUrl": { "value": "https://kv-num-uk.vault.azure.net/secrets/hpcuk-comm/32a13713553944a7aff3d4400d89e0be" },
-    "certificateThumbprint": { "value": "993B33DE2C7536FB912F1E313981C57F19F8B94A" },
-
-    "createPublicIPAddressForHeadNode": { "value": "No" },
-
     "aadLoginEnabled": { "value": true },
-
     "authenticationKey": { "value": "" }
   }
 }

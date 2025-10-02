@@ -1575,7 +1575,7 @@
         "parameters": {
           "aadLoginEnabled": {
             "value": "[parameters('aadLoginEnabled')]"
-          };
+          },
           "adminPassword": {
             "value": "[parameters('adminPassword')]"
           },
