@@ -181,6 +181,11 @@
     }
   ],
   "parameters": {
+    "aadLoginEnabled": {
+        "type": "bool",
+        "defaultValue": true,
+        "metadata": { "description": "Install Microsoft Entra (AAD) login extension on head + compute nodes." }
+    },
     "hpcPackRelease": {
       "$ref": "#/definitions/HpcPackRelease",
       "defaultValue": "2019 Update 3",
@@ -1568,6 +1573,9 @@
         },
         "mode": "Incremental",
         "parameters": {
+          "aadLoginEnabled": {
+            "value": "[parameters('aadLoginEnabled')]"
+          };
           "adminPassword": {
             "value": "[parameters('adminPassword')]"
           },
@@ -1760,6 +1768,10 @@
             }
           ],
           "parameters": {
+            "aadLoginEnabled": {
+              "type": "bool",
+              "defaultValue": true
+            },
             "hnName": {
               "type": "string"
             },
@@ -2047,34 +2059,22 @@
                 "headNode"
               ]
             },
-            "joinDomain": {
-              "condition": "[not(empty(parameters('domainName')))]",
-              "type": "Microsoft.Compute/virtualMachines/extensions",
-              "apiVersion": "2023-03-01",
-              "name": "[format('{0}/{1}', parameters('hnName'), 'JoinADDomain')]",
-              "location": "[resourceGroup().location]",
-              "properties": {
-                "publisher": "Microsoft.Compute",
-                "type": "JsonADDomainExtension",
-                "typeHandlerVersion": "1.3",
-                "autoUpgradeMinorVersion": true,
-                "settings": {
-                  "Name": "[parameters('domainName')]",
-                  "OUPath": "[parameters('domainOUPath')]",
-                  "User": "[format('{0}\\{1}', parameters('domainName'), parameters('adminUsername'))]",
-                  "NumberOfRetries": "50",
-                  "RetryIntervalInMilliseconds": "10000",
-                  "Restart": "true",
-                  "Options": "3"
+            "enableEntraSignIn": {
+                "condition": "[parameters('aadLoginEnabled')]",
+                "type": "Microsoft.Compute/virtualMachines/extensions",
+                "apiVersion": "2019-03-01",
+                "name": "[format('{0}/{1}', parameters('hnName'), 'EnableEntraSignIn')]",
+                "location": "[resourceGroup().location]",
+                "properties": {
+                    "publisher": "Microsoft.Azure.ActiveDirectory",
+                    "type": "AADLoginForWindows",
+                    "typeHandlerVersion": "1.0",
+                    "autoUpgradeMinorVersion": true,
+                    "settings": {}
                 },
-                "protectedSettings": {
-                  "Password": "[parameters('adminPassword')]"
-                }
-              },
-              "dependsOn": [
-                "headNode",
-                "ibDriver"
-              ]
+                "dependsOn": [
+                    "headNode"
+                ]
             },
             "keyVaultRoleAssignment": {
               "condition": "[parameters('enableManagedIdentity')]",
@@ -2327,6 +2327,9 @@
         },
         "mode": "Incremental",
         "parameters": {
+          "aadLoginEnabled": {
+            "value": "[parameters('aadLoginEnabled')]"
+          },
           "subnetId": {
             "value": "[format('{0}/subnets/{1}', reference('vnet').outputs.vNetId.value, variables('subnet1Name'))]"
           },
@@ -2530,6 +2533,13 @@
             }
           ],
           "parameters": {
+            "aadLoginEnabled": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Install AADLoginForWindows to allow Entra ID sign-in."
+              }
+            },
             "subnetId": {
               "type": "string",
               "metadata": {
@@ -2909,6 +2919,23 @@
                 "windowsIBDriver"
               ]
             },
+            "enableEntraSignIn": {
+              "condition": "[and(variables('isWindowsOS'), parameters('aadLoginEnabled'))]",
+              "type": "Microsoft.Compute/virtualMachines/extensions",
+              "apiVersion": "2019-03-01",
+              "name": "[format('{0}/{1}', parameters('vmName'), 'EnableEntraSignIn')]",
+              "location": "[resourceGroup().location]",
+              "properties": {
+                "publisher": "Microsoft.Azure.ActiveDirectory",
+                "type": "AADLoginForWindows",
+                "typeHandlerVersion": "1.0",
+                "autoUpgradeMinorVersion": true,
+                "settings": {}
+              },
+              "dependsOn": [
+                "vm"
+              ]
+            },
             "linuxIBDriver": {
               "condition": "[and(not(variables('isWindowsOS')), parameters('installRDMADriver'))]",
               "type": "Microsoft.Compute/virtualMachines/extensions",
@@ -2972,6 +2999,9 @@
         },
         "mode": "Incremental",
         "parameters": {
+          "aadLoginEnabled": { 
+            "value": "[parameters('aadLoginEnabled')]" 
+          },
           "subnetId": {
             "value": "[format('{0}/subnets/{1}', reference('vnet').outputs.vNetId.value, variables('subnet1Name'))]"
           },
@@ -3154,6 +3184,13 @@
             }
           ],
           "parameters": {
+            "aadLoginEnabled": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Install AADLoginForWindows to allow Entra ID sign-in on Windows VMSS instances."
+              }
+            },
             "subnetId": {
               "type": "string",
               "metadata": {
@@ -3439,6 +3476,16 @@
                 "settings": {}
               }
             },
+            "aadLoginExtension": {
+              "name": "EnableEntraSignIn",
+              "properties": {
+                "publisher": "Microsoft.Azure.ActiveDirectory",
+                "type": "AADLoginForWindows",
+                "typeHandlerVersion": "1.0",
+                "autoUpgradeMinorVersion": true,
+                "settings": {}
+              }
+            },
             "hpcLinuxDriverExtension": {
               "name": "installRDMADriver",
               "properties": {
@@ -3451,7 +3498,7 @@
             },
             "basicVmssExtension": "[if(variables('isWindowsOS'), variables('winBasicExtension'), variables('lnxBasicExtension'))]",
             "hpcDriverExtension": "[if(variables('isWindowsOS'), variables('hpcWinDriverExtension'), variables('hpcLinuxDriverExtension'))]",
-            "vmssExtensions": "[if(parameters('installRDMADriver'), concat(variables('basicVmssExtension'), array(variables('hpcDriverExtension'))), variables('basicVmssExtension'))]"
+            "vmssExtensions": "[concat(variables('basicVmssExtension'), if(parameters('installRDMADriver'), array(variables('hpcDriverExtension')), variables('emptyArray')), if(and(variables('isWindowsOS'), parameters('aadLoginEnabled')), array(variables('aadLoginExtension')), variables('emptyArray')))]"
           },
           "resources": {
             "vmss": {
