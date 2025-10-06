@@ -68,15 +68,6 @@ Acts as the **master script**.
 
 ---
 
-## Next Steps
-
-1. Evaluate **Azure AD Domain Services (AAD DS)** for cluster domain management.  
-2. Add **job submission scripts** for testing HPC Pack workloads.  
-3. Automate **log upload** and validation checks.  
-4. Upgrade **AADLoginForWindows** to v2.2.0.0 cluster-wide.
-
----
-
 ## Folder Structure
 
 /scripts
