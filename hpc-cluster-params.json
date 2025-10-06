@@ -4,10 +4,13 @@
   "parameters": {
     "clusterName": { "value": "hpcuk1" },
     "headNodeOS": { "value": "WindowsServer2022" },
-    "computeNodeImage": { "value": "WindowsServer2022" },
+    "computeNodeImage": { "value": "CustomImage" },
+    "computeNodeImageResourceId": {
+      "value": "/subscriptions/da883fd8-76c8-4ca5-a7e6-8567ae83ce10/resourceGroups/rg-numerica-uk-hpc/providers/Microsoft.Compute/galleries/numerica_image_gallery/images/win-server-2022dc-office/versions/1.0.0"
+    },
     "computeNodeNamePrefix": { "value": "hpcuk1" },
 
-    "computeNodeNumber": { "value": 2 },
+    "computeNodeNumber": { "value": 1 },
     "computeNodeVMSize": { "value": "Standard_D4s_v3" },
     "computeNodeOsDiskType": { "value": "Standard_SSD" },
     "computeNodeDataDiskSize": { "value": 128 },
@@ -35,7 +38,20 @@
         "secretName": "admin-password"
       }
     },
-
+    "useExistingVnet": { "value": "Yes" },
+    "existingVnetResourceId": {
+      "value": "/subscriptions/da883fd8-76c8-4ca5-a7e6-8567ae83ce10/resourceGroups/rg-numerica-uk/providers/Microsoft.Network/virtualNetworks/numerica-uk-vnet"
+    },
+    "existingSubnetName": { "value": "hpcuk-subnet" },
+    "useExistingKeyVault": { "value": "Yes" },
+    "existingKeyVaultResourceGroup": { "value": "rg-numerica-uk-hpc" },
+    "existingKeyVaultName": { "value": "kv-num-uk" },
+    "certificateUrl": {
+      "value": "https://kv-num-uk.vault.azure.net/secrets/hpcuk-comm/32a13713553944a7aff3d4400d89e0be"
+    },
+    "certificateThumbprint": { "value": "993B33DE2C7536FB912F1E313981C57F19F8B94A" },
+    "enableAzureMonitor": { "value": "No" },
+    "autoInstallInfiniBandDriver": { "value": "No" },
     "aadLoginEnabled": { "value": true },
     "authenticationKey": { "value": "" }
   }

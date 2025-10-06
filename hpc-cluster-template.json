@@ -181,6 +181,38 @@
     }
   ],
   "parameters": {
+    "useExistingVnet": { 
+      "$ref": "#/definitions/YesOrNo", 
+      "defaultValue": "No" 
+    },
+    "existingVnetResourceId": { 
+      "type": "string", 
+      "defaultValue": "" 
+    },
+    "existingSubnetName": { 
+      "type": "string", 
+      "defaultValue": "" 
+    },
+    "useExistingKeyVault": { 
+      "$ref": "#/definitions/YesOrNo", 
+      "defaultValue": "No" 
+    },
+    "existingKeyVaultResourceGroup": { 
+      "type": "string", 
+      "defaultValue": "" 
+    },
+    "existingKeyVaultName": { 
+      "type": "string", 
+      "defaultValue": "" 
+    },
+    "certificateUrl": { 
+      "type": "string", 
+      "defaultValue": "" 
+    },
+    "certificateThumbprint": { 
+      "type": "string", 
+      "defaultValue": "" 
+    },
     "aadLoginEnabled": {
         "type": "bool",
         "defaultValue": true,
@@ -465,7 +497,7 @@
       "Standard_SSD": "StandardSSD_LRS",
       "Premium_SSD": "Premium_LRS"
     },
-    "sharedResxBaseUrl": "https://raw.githubusercontent.com/Azure/hpcpack-template/master/SharedResources/Generated",
+    "sharedResxBaseUrl": "https://hpccluster251003.blob.core.windows.net/install",
     "windowsComputeNodeImages": {
       "WindowsServer2008R2": {
         "publisher": "MicrosoftWindowsServer",
@@ -592,15 +624,15 @@
           },
           "configurationArguments": {
             "ClusterName": "[variables('_clusterName')]",
-            "SSLThumbprint": "[reference('keyVault').outputs.certSettings.value.thumbprint]",
+            "SSLThumbprint": "[if(equals(parameters('useExistingKeyVault'), 'Yes'), parameters('certificateThumbprint'), reference('keyVault').outputs.certSettings.value.thumbprint)]",
             "CNSize": "[parameters('computeNodeVMSize')]",
             "SubscriptionId": "[subscription().subscriptionId]",
-            "VNet": "[variables('virtualNetworkName')]",
-            "Subnet": "[variables('subnet1Name')]",
+            "VNet": "[if(equals(parameters('useExistingVnet'), 'Yes'), last(split(parameters('existingVnetResourceId'), '/')), variables('virtualNetworkName'))]",
+            "Subnet": "[if(equals(parameters('useExistingVnet'), 'Yes'), parameters('existingSubnetName'), variables('subnet1Name'))]",
             "Location": "[resourceGroup().location]",
             "ResourceGroup": "[resourceGroup().name]",
-            "VaultResourceGroup": "[reference('keyVault').outputs.certSettings.value.vaultResourceGroup]",
-            "CertificateUrl": "[reference('keyVault').outputs.certSettings.value.url]",
+            "VaultResourceGroup": "[if(equals(parameters('useExistingKeyVault'), 'Yes'), parameters('existingKeyVaultResourceGroup'), reference('keyVault').outputs.certSettings.value.vaultResourceGroup)]",
+            "CertificateUrl": "[if(equals(parameters('useExistingKeyVault'), 'Yes'), parameters('certificateUrl'), reference('keyVault').outputs.certSettings.value.url)]",
             "CNNamePrefix": "[variables('_computeNodeNamePrefix')]",
             "AutoGSUseManagedIdentity": "[equals(parameters('enableManagedIdentityOnHeadNode'), 'Yes')]"
           }
@@ -626,6 +658,7 @@
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2022-09-01",
       "name": "KeyVaultWithCert",
+      "condition": "[equals(parameters('useExistingKeyVault'), 'No')]",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -709,13 +742,15 @@
               "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
               "apiVersion": "2023-01-31",
               "name": "userMiForNewCert",
+              "condition": "[equals(parameters('useExistingKeyVault'), 'No')]",
               "location": "[parameters('location')]"
             },
             "roleAssignment": {
               "type": "Microsoft.Authorization/roleAssignments",
               "apiVersion": "2022-04-01",
-              "scope": "[format('Microsoft.KeyVault/vaults/{0}', variables('vaultName'))]",
-              "name": "[guid(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'userMiForNewCert'), 'Contributor')]",
+              "condition": "[equals(parameters('useExistingKeyVault'), 'No')]",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', variables('vaultName'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', variables('vaultName')), reference('userMiForNewCert').principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions','00482a5a-887f-4fb3-b363-3b7fe8e74483'))]",
               "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '00482a5a-887f-4fb3-b363-3b7fe8e74483')]",
                 "principalId": "[reference('userMiForNewCert').principalId]",
@@ -730,6 +765,7 @@
               "type": "Microsoft.Resources/deploymentScripts",
               "apiVersion": "2023-08-01",
               "name": "newCert",
+              "condition": "[equals(parameters('useExistingKeyVault'), 'No')]",
               "location": "[parameters('location')]",
               "kind": "AzurePowerShell",
               "identity": {
@@ -766,7 +802,7 @@
       }
     },
     "monitor": {
-      "condition": "[variables('_enableAzureMonitor')]",
+      "condition": "[equals(parameters('enableAzureMonitor'), 'Yes')]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2022-09-01",
       "name": "AzureMonitor",
@@ -967,14 +1003,15 @@
                             {
                               "type": "Microsoft.Authorization/roleAssignments",
                               "apiVersion": "2022-04-01",
-                              "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', parameters('workSpaceName'))]",
-                              "name": "[guid(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix'))), 'Contributor')]",
+                              "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workSpaceName'))]",
+                              "name": "[guid(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workSpaceName')), reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix'))), '2023-01-31').principalId, subscriptionResourceId('Microsoft.Authorization/roleDefinitions','b24988ac-6180-42a0-ab88-20f738-3b7fe8e74483'))]",
                               "properties": {
-                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f738-3b7fe8e74483')]",
                                 "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix'))), '2023-01-31').principalId]",
                                 "principalType": "ServicePrincipal"
                               },
                               "dependsOn": [
+                                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workSpaceName'))]",
                                 "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix')))]"
                               ]
                             },
@@ -1144,15 +1181,15 @@
                               },
                               "type": "Microsoft.Authorization/roleAssignments",
                               "apiVersion": "2022-04-01",
-                              "scope": "[format('Microsoft.Insights/dataCollectionRules/{0}', parameters('dataCollectionRuleName'))]",
-                              "name": "[guid(parameters('userMiPrincipalIds')[copyIndex()], 'Monitoring Metrics Publisher')]",
+                              "scope": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('dataCollectionRuleName'))]",
+                              "name": "[guid(resourceId('Microsoft.Insights/dataCollectionRules', parameters('dataCollectionRuleName')), parameters('userMiPrincipalIds')[copyIndex()], subscriptionResourceId('Microsoft.Authorization/roleDefinitions','3913510d-42f4-4e42-8a64-420c390055eb'))]",
                               "properties": {
                                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '3913510d-42f4-4e42-8a64-420c390055eb')]",
                                 "principalId": "[parameters('userMiPrincipalIds')[copyIndex()]]",
                                 "principalType": "ServicePrincipal"
                               },
                               "dependsOn": [
-                                "logIngestionDcr"
+                                "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('dataCollectionRuleName'))]"
                               ]
                             }
                           },
@@ -1350,6 +1387,7 @@
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2022-09-01",
       "name": "createVNet",
+      "condition": "[equals(parameters('useExistingVnet'), 'No')]",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -1573,6 +1611,12 @@
         },
         "mode": "Incremental",
         "parameters": {
+          "sharedResxBaseUrl": { 
+            "value": "[variables('sharedResxBaseUrl')]" 
+          },
+          "scriptsSasToken":   {
+            "value": "" 
+          },
           "aadLoginEnabled": {
             "value": "[parameters('aadLoginEnabled')]"
           },
@@ -1583,7 +1627,7 @@
             "value": "[parameters('adminUsername')]"
           },
           "certSettings": {
-            "value": "[reference('keyVault').outputs.certSettings.value]"
+            "value": "[if(equals(parameters('useExistingKeyVault'), 'Yes'), createObject('vaultResourceGroup', parameters('existingKeyVaultResourceGroup'), 'vaultName', parameters('existingKeyVaultName'), 'url', parameters('certificateUrl'), 'thumbprint', parameters('certificateThumbprint')), reference('keyVault').outputs.certSettings.value)]"
           },
           "clusterName": {
             "value": "[variables('_clusterName')]"
@@ -1625,11 +1669,8 @@
           "logSettings": "[if(variables('_enableAzureMonitor'), createObject('value', reference('monitor').outputs.logSettings.value), createObject('value', null()))]",
           "amaSettings": "[if(variables('_enableAzureMonitor'), createObject('value', reference('monitor').outputs.amaSettings.value), createObject('value', null()))]",
           "nsgName": "[if(equals(parameters('createPublicIPAddressForHeadNode'), 'Yes'), createObject('value', variables('nsgName')), createObject('value', null()))]",
-          "privateIp": {
-            "value": "10.0.0.4"
-          },
           "subnetId": {
-            "value": "[format('{0}/subnets/{1}', reference('vnet').outputs.vNetId.value, variables('subnet1Name'))]"
+            "value": "[if(equals(parameters('useExistingVnet'), 'Yes'), format('{0}/subnets/{1}', parameters('existingVnetResourceId'), parameters('existingSubnetName')), format('{0}/subnets/{1}', reference('vnet').outputs.vNetId.value, variables('subnet1Name')))]"
           }
         },
         "template": {
@@ -1768,6 +1809,12 @@
             }
           ],
           "parameters": {
+            "sharedResxBaseUrl": { 
+              "type": "string" 
+            },
+            "scriptsSasToken":   {
+              "type": "string", "defaultValue": "" 
+            },
             "aadLoginEnabled": {
               "type": "bool",
               "defaultValue": true
@@ -1801,10 +1848,6 @@
               "nullable": true
             },
             "nsgName": {
-              "type": "string",
-              "nullable": true
-            },
-            "privateIp": {
               "type": "string",
               "nullable": true
             },
@@ -1964,8 +2007,7 @@
                       "subnet": {
                         "id": "[parameters('subnetId')]"
                       },
-                      "privateIPAllocationMethod": "[if(empty(parameters('privateIp')), 'Dynamic', 'Static')]",
-                      "privateIPAddress": "[parameters('privateIp')]",
+                      "privateIPAllocationMethod": "Dynamic",
                       "publicIPAddress": "[if(not(parameters('createPublicIp')), null(), createObject('id', resourceId('Microsoft.Network/publicIPAddresses', format('{0}PublicIp', parameters('hnName')))))]",
                       "loadBalancerBackendAddressPools": "[if(empty(parameters('lbName')), null(), createArray(createObject('id', format('{0}/backendAddressPools/{1}', resourceId('Microsoft.Network/loadBalancers', if(empty(parameters('lbName')), 'lbName', parameters('lbName'))), parameters('lbPoolName')))))]",
                       "loadBalancerInboundNatRules": "[if(empty(parameters('lbName')), null(), createArray(createObject('id', format('{0}/inboundNatRules/RDP-{1}', resourceId('Microsoft.Network/loadBalancers', if(empty(parameters('lbName')), 'lbName', parameters('lbName'))), parameters('hnName')))))]"
@@ -2029,15 +2071,44 @@
                 "nic"
               ]
             },
-            "contributorRoleAssignment": {
-              "condition": "[parameters('enableManagedIdentity')]",
-              "type": "Microsoft.Authorization/roleAssignments",
-              "apiVersion": "2022-04-01",
-              "name": "[guid(resourceGroup().id, parameters('clusterName'), parameters('hnName'))]",
+            "hnContributorRole": {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "hnContributorRole",
               "properties": {
-                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
-                "principalId": "[reference('headNode', '2023-03-01', 'full').identity.principalId]",
-                "principalType": "ServicePrincipal"
+                "mode": "Incremental",
+                "parameters": {
+                  "scope": {
+                    "value": "[resourceGroup().id]"
+                  },
+                  "principalId": {
+                    "value": "[reference('headNode', '2023-03-01', 'full').identity.principalId]"
+                  },
+                  "roleDefinitionId": {
+                    "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions','b24988ac-6180-42a0-ab88-20f7382dd24c')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "parameters": {
+                    "scope": { "type": "string" },
+                    "principalId": { "type": "string" },
+                    "roleDefinitionId": { "type": "string" }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2022-04-01",
+                      "name": "[guid(parameters('scope'), parameters('principalId'), parameters('roleDefinitionId'))]",
+                      "properties": {
+                        "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                        "principalId": "[parameters('principalId')]",
+                        "principalType": "ServicePrincipal"
+                      }
+                    }
+                  ]
+                }
               },
               "dependsOn": [
                 "headNode"
@@ -2068,13 +2139,36 @@
                 "properties": {
                     "publisher": "Microsoft.Azure.ActiveDirectory",
                     "type": "AADLoginForWindows",
-                    "typeHandlerVersion": "1.0",
-                    "autoUpgradeMinorVersion": true,
-                    "settings": {}
+                    "typeHandlerVersion": "2.2",
+                    "autoUpgradeMinorVersion": true
                 },
                 "dependsOn": [
                     "headNode"
                 ]
+            },
+            "installOfficeAndShare": {
+              "type": "Microsoft.Compute/virtualMachines/extensions",
+              "apiVersion": "2023-03-01",
+              "name": "[format('{0}/installOfficeAndShare', parameters('hnName'))]",
+              "location": "[resourceGroup().location]",
+              "properties": {
+                "publisher": "Microsoft.Compute",
+                "type": "CustomScriptExtension",
+                "typeHandlerVersion": "1.10",
+                "autoUpgradeMinorVersion": true,
+                "settings": {
+                  "fileUris": [
+                    "[concat(parameters('sharedResxBaseUrl'), '/scripts/disable-ieesc.ps1')]",
+                    "[concat(parameters('sharedResxBaseUrl'), '/scripts/install-office.ps1')]",
+                    "[concat(parameters('sharedResxBaseUrl'), '/scripts/create-share.ps1')]",
+                    "[concat(parameters('sharedResxBaseUrl'), '/scripts/wrapper.ps1')]"
+                  ],
+                  "commandToExecute": "powershell -ExecutionPolicy Bypass -Command \"Get-ChildItem .\\scripts -Filter *.ps1 | Unblock-File; .\\scripts\\wrapper.ps1\""
+                }
+              },
+              "dependsOn": [
+                "headNode"
+              ]              
             },
             "keyVaultRoleAssignment": {
               "condition": "[parameters('enableManagedIdentity')]",
@@ -2117,8 +2211,8 @@
                     {
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[format('Microsoft.KeyVault/vaults/{0}', parameters('keyVaultName'))]",
-                      "name": "[guid(resourceGroup().id, parameters('keyVaultName'), parameters('principalId'))]",
+                      "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+                      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), parameters('principalId'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions','f25e0fa2-a7c8-4377-a976-54943a77a395'))]",
                       "properties": {
                         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'f25e0fa2-a7c8-4377-a976-54943a77a395')]",
                         "principalId": "[parameters('principalId')]",
@@ -2173,8 +2267,8 @@
                     {
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[format('Microsoft.Network/virtualNetworks/{0}', parameters('vnetName'))]",
-                      "name": "[guid(resourceGroup().id, parameters('vnetName'), parameters('principalId'))]",
+                      "scope": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]",
+                      "name": "[guid(resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName')), parameters('principalId'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions','4d97b98b-1d4f-4787-a291-c67834d212e7'))]",
                       "properties": {
                         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4d97b98b-1d4f-4787-a291-c67834d212e7')]",
                         "principalId": "[parameters('principalId')]",
@@ -2331,7 +2425,7 @@
             "value": "[parameters('aadLoginEnabled')]"
           },
           "subnetId": {
-            "value": "[format('{0}/subnets/{1}', reference('vnet').outputs.vNetId.value, variables('subnet1Name'))]"
+            "value": "[if(equals(parameters('useExistingVnet'), 'Yes'), format('{0}/subnets/{1}', parameters('existingVnetResourceId'), parameters('existingSubnetName')), format('{0}/subnets/{1}', reference('vnet').outputs.vNetId.value, variables('subnet1Name')))]"
           },
           "vmName": {
             "value": "[format('{0}{1}', variables('_computeNodeNamePrefix'), padLeft(string(range(0, parameters('computeNodeNumber'))[copyIndex()]), 3, '0'))]"
@@ -2374,7 +2468,7 @@
             "value": "[equals(parameters('enableAcceleratedNetworking'), 'Yes')]"
           },
           "certSettings": {
-            "value": "[reference('keyVault').outputs.certSettings.value]"
+            "value": "[if(equals(parameters('useExistingKeyVault'), 'Yes'), createObject('vaultResourceGroup', parameters('existingKeyVaultResourceGroup'), 'vaultName', parameters('existingKeyVaultName'), 'url', parameters('certificateUrl'), 'thumbprint', parameters('certificateThumbprint')), reference('keyVault').outputs.certSettings.value)]"
           },
           "headNodeList": {
             "value": "[variables('_clusterName')]"
@@ -2831,7 +2925,9 @@
               "apiVersion": "2019-03-01",
               "name": "[parameters('vmName')]",
               "location": "[resourceGroup().location]",
-              "identity": "[variables('identity')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
               "tags": "[variables('tags')]",
               "properties": {
                 "availabilitySet": "[if(empty(trim(parameters('availabilitySetName'))), null(), variables('availabilitySet'))]",
@@ -2928,9 +3024,8 @@
               "properties": {
                 "publisher": "Microsoft.Azure.ActiveDirectory",
                 "type": "AADLoginForWindows",
-                "typeHandlerVersion": "1.0",
-                "autoUpgradeMinorVersion": true,
-                "settings": {}
+                "typeHandlerVersion": "2.2",
+                "autoUpgradeMinorVersion": true
               },
               "dependsOn": [
                 "vm"
@@ -3003,7 +3098,7 @@
             "value": "[parameters('aadLoginEnabled')]" 
           },
           "subnetId": {
-            "value": "[format('{0}/subnets/{1}', reference('vnet').outputs.vNetId.value, variables('subnet1Name'))]"
+            "value": "[if(equals(parameters('useExistingVnet'), 'Yes'), format('{0}/subnets/{1}', parameters('existingVnetResourceId'), parameters('existingSubnetName')), format('{0}/subnets/{1}', reference('vnet').outputs.vNetId.value, variables('subnet1Name')))]"
           },
           "vmssName": {
             "value": "[variables('computeVmssName')]"
@@ -3051,7 +3146,7 @@
             "value": "[equals(parameters('enableAcceleratedNetworking'), 'Yes')]"
           },
           "certSettings": {
-            "value": "[reference('keyVault').outputs.certSettings.value]"
+            "value": "[if(equals(parameters('useExistingKeyVault'), 'Yes'), createObject('vaultResourceGroup', parameters('existingKeyVaultResourceGroup'), 'vaultName', parameters('existingKeyVaultName'), 'url', parameters('certificateUrl'), 'thumbprint', parameters('certificateThumbprint')), reference('keyVault').outputs.certSettings.value)]"
           },
           "headNodeList": {
             "value": "[variables('_clusterName')]"
@@ -3481,9 +3576,8 @@
               "properties": {
                 "publisher": "Microsoft.Azure.ActiveDirectory",
                 "type": "AADLoginForWindows",
-                "typeHandlerVersion": "1.0",
-                "autoUpgradeMinorVersion": true,
-                "settings": {}
+                "typeHandlerVersion": "2.2",
+                "autoUpgradeMinorVersion": true
               }
             },
             "hpcLinuxDriverExtension": {
@@ -3511,7 +3605,9 @@
                 "tier": "Standard",
                 "capacity": "[parameters('vmNumber')]"
               },
-              "identity": "[if(empty(trim(parameters('userAssignedIdentity'))), null(), variables('userAssignedIdentityObject'))]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
               "properties": {
                 "singlePlacementGroup": "[parameters('singlePlacementGroup')]",
                 "overprovision": false,
